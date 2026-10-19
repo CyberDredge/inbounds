@@ -138,7 +138,7 @@ Decisions made while building, so the reasoning survives between sessions.
 - A scheme is required for anything with a path. `example.com/path`, `//example.com`, and anything with `?`, `#`, or `@` but no scheme is UNCLEAR.
 - Backslashes are UNCLEAR (browsers read them as slashes, other tools do not).
 - Query strings and fragments are dropped. Dot-segments in URL paths are resolved before matching (`/api/../admin` becomes `/admin`). Percent-encoded dots, slashes, backslashes, and null bytes in a path are UNCLEAR.
-- Path case is preserved. Whether path rules match case-sensitively is a step 2 decision (proposed: case-sensitive).
+- Path case is preserved. Path rules match case-sensitively (decided in step 2).
 - Userinfo in a URL is ignored (the host is what follows the last `@`) and a warning is attached. The warning never repeats the userinfo, since it can hold a password.
 - Numeric last label (decimal, hex, octal-style, short forms like `127.1`) is UNCLEAR unless the whole thing is a strict dotted-quad IPv4. Leading zeros such as `203.0.113.050` are UNCLEAR.
 - IPv6 zone identifiers (`%eth0`) are UNCLEAR. IPv4-mapped IPv6 (`::ffff:203.0.113.7`) is converted to the IPv4 address with a warning, so a deny rule on the IPv4 address also catches it.
@@ -146,3 +146,15 @@ Decisions made while building, so the reasoning survives between sessions.
 - Host name labels allow letters, digits, hyphen, and underscore. Wildcards, empty labels, labels over 63 characters, and names over 253 characters are UNCLEAR.
 - Internationalized names are converted to punycode with Python's built-in IDNA codec (IDNA 2003 rules).
 - Target text longer than 2048 characters is UNCLEAR.
+
+### Step 2: rules and matcher (2026-10-19)
+- A rule that cannot be read unambiguously is an error (`RuleError`) when the `Scope` is built, never a guess. Rejected: wildcards anywhere except a leading `*.` (so `https://*.example.com/` and `https://example.net/api/*` are errors for now), a query string or fragment in a rule, userinfo, IPv4-mapped IPv6, a path without a scheme, CIDR with host bits set (`203.0.113.5/24`), and netmask-style CIDR.
+- Path rules are case-sensitive and match on a path-segment boundary. A rule path ending in `/` covers everything beneath that directory but not the bare path without the slash (`https://example.net/api/` does not cover `https://example.net/api`); this fails closed. A rule path without a trailing `/` covers that exact path and everything beneath it. A URL rule with no path covers the whole host for that scheme.
+- A URL rule needs a URL target with the same scheme and host. A bare host target says nothing about a path, so it never matches a URL rule.
+- Ports: a rule without a port matches any port. A rule with a port needs a target whose port is known and equal; a URL target without an explicit port uses the scheme default (http 80, https 443). A bare host with no port has no known port.
+- Deny rules that cannot be checked (a deny limited to a port or a URL path, against a target that does not say which port or path) are not applied, and a warning says so. The status is not changed by that warning.
+- Deny wildcards always match at any depth, even when `wildcard_depth = "one"`. Allow wildcards follow the option. When in doubt a deny should win.
+- Host, wildcard and URL rules never match IP targets by name; IP and CIDR rules never match host names. No DNS lookups, ever.
+- The first matching rule in file order is the one named in the verdict. Deny rules are checked before any allow rule.
+- A verdict shows the target as typed, except that URL userinfo (`user:password@`) is replaced with `***@`, so a password never reaches output or logs.
+- `Scope.load(path)` and the stale-scope warning arrive in step 3; `Scope(allow=..., deny=..., wildcard_depth=...)` is the in-memory form.

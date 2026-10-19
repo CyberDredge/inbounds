@@ -23,8 +23,11 @@ Requires Python 3.11 or newer.
 ## Where things are
 - `SPEC.md` — design, rules, required test table, build order, and a build decisions log at the bottom.
 - `src/inbounds/normalize.py` — target normalization (build step 1).
-- `tests/` — table-driven tests.
+- `src/inbounds/rules.py` — rule parsing into typed rules (build step 2).
+- `src/inbounds/matcher.py` — `Scope`, `Verdict`, `Status`, matching (build step 2).
+- `tests/` — table-driven tests. `test_matcher_table.py` holds the SPEC.md table row for row.
 
 ## Build status (update at the end of each session)
-- Step 1 (normalize + tests): written, tests passing in the build workspace, awaiting the owner's review. Nothing committed.
-- Next: step 2 (rules + matcher + the SPEC.md test table as tests).
+- Step 1 (normalize + tests): committed and pushed (a66801a).
+- Step 2 (rules + matcher + SPEC table as tests): written, 279 tests passing on Python 3.11, 3.12 and 3.13 in the build workspace, awaiting the owner's review. Not committed.
+- Next: step 3 (scope file loader `Scope.load`, stale-scope warning).
