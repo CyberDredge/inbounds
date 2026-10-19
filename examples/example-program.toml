@@ -1,0 +1,24 @@
+# Fictional example. Not a real program. Copy the scope from the program's own
+# published policy page, and write down when you did.
+
+[program]
+name = "example-program"
+captured = 2026-10-18                       # the date you copied the scope; drives the stale warning
+source = "https://example.com/security"     # where you copied it from (informational only, never fetched)
+
+[options]
+wildcard_depth = "any"                      # "any": *.example.com matches a.b.example.com; "one": only a.example.com
+max_age_days = 90                           # warn when the scope is older than this
+
+[rules]
+allow = [
+    "*.example.com",                        # subdomains only; list example.com itself separately if it is in scope
+    "app.example.org",
+    "https://example.net/api/",             # URL prefix, matched on a path-segment boundary
+    "203.0.113.0/24",
+]
+deny = [
+    "admin.example.com",
+    "*.staging.example.com",
+    "203.0.113.7",
+]

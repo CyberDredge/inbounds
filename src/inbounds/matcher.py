@@ -13,7 +13,9 @@ is the one named in the verdict, so results are deterministic.
 
 from __future__ import annotations
 
+import datetime
 import enum
+import os
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -22,6 +24,7 @@ from inbounds.normalize import Target, UnclearTarget, normalize
 from inbounds.rules import Rule, RuleKind, parse_rule
 
 WILDCARD_DEPTHS = ("any", "one")
+DEFAULT_MAX_AGE_DAYS = 90
 DEFAULT_PORTS = {"http": 80, "https": 443}
 
 
@@ -62,6 +65,12 @@ class Scope:
     ``allow`` and ``deny`` are rule strings (or already parsed ``Rule``
     objects). A rule that cannot be parsed raises ``RuleError`` here, at
     construction, so a broken scope never produces verdicts.
+
+    ``captured`` (a ``datetime.date``) is when the scope was copied from the
+    program's policy. It drives the stale-scope warning: a scope older than
+    ``max_age_days`` still gives verdicts, with a warning attached, and the
+    status is never changed because of age. ``name`` and ``source`` are
+    informational only (the source is never fetched).
     """
 
     def __init__(
@@ -69,20 +78,62 @@ class Scope:
         allow: Iterable[str | Rule] = (),
         deny: Iterable[str | Rule] = (),
         wildcard_depth: str = "any",
+        *,
+        name: str | None = None,
+        captured: datetime.date | None = None,
+        source: str | None = None,
+        max_age_days: int = DEFAULT_MAX_AGE_DAYS,
     ) -> None:
         if wildcard_depth not in WILDCARD_DEPTHS:
             raise ValueError(f"wildcard_depth must be one of {WILDCARD_DEPTHS}, got {wildcard_depth!r}")
+        if isinstance(max_age_days, bool) or not isinstance(max_age_days, int) or max_age_days < 1:
+            raise ValueError(f"max_age_days must be a whole number of days, 1 or more, got {max_age_days!r}")
+        if captured is not None and type(captured) is not datetime.date:
+            raise ValueError(f"captured must be a datetime.date, got {captured!r}")
         self.wildcard_depth = wildcard_depth
         self.allow: tuple[Rule, ...] = tuple(_as_rule(r) for r in allow)
         self.deny: tuple[Rule, ...] = tuple(_as_rule(r) for r in deny)
+        self.name = name
+        self.captured = captured
+        self.source = source
+        self.max_age_days = max_age_days
 
-    def check(self, raw: str) -> Verdict:
-        """Return the verdict for one target string. Never raises on bad input."""
+    @classmethod
+    def load(cls, path: str | os.PathLike[str]) -> Scope:
+        """Load a scope from a TOML file. Raises ``ScopeFileError`` if it is not usable."""
+        from inbounds.scopefile import load_scope
+
+        return load_scope(path)
+
+    def stale_warnings(self, today: datetime.date | None = None) -> tuple[str, ...]:
+        """Warnings about the age of the scope; empty when it is fresh.
+
+        Warnings only. Nothing here changes a verdict's status.
+        """
+        if self.captured is None:
+            return ()
+        age = ((today or datetime.date.today()) - self.captured).days
+        if age < 0:
+            return (f"scope captured date {self.captured} is in the future; check it for a typo",)
+        if age > self.max_age_days:
+            return (
+                f"scope was captured {age} days ago on {self.captured}, older than "
+                f"max_age_days = {self.max_age_days}; check the program's published policy "
+                "for changes",
+            )
+        return ()
+
+    def check(self, raw: str, *, today: datetime.date | None = None) -> Verdict:
+        """Return the verdict for one target string. Never raises on bad input.
+
+        ``today`` is for tests; it defaults to the current date.
+        """
         shown = _shown(raw)
+        stale = self.stale_warnings(today)
         try:
             target = normalize(raw)
         except UnclearTarget as exc:
-            return Verdict(Status.UNCLEAR, shown, None, exc.reason)
+            return Verdict(Status.UNCLEAR, shown, None, exc.reason, stale)
 
         warnings = list(target.warnings)
 
@@ -93,7 +144,7 @@ class Scope:
                     shown,
                     rule.text,
                     f"denied by rule {rule.text}",
-                    tuple(warnings),
+                    (*warnings, *stale),
                 )
 
         for rule in self.deny:
@@ -108,11 +159,11 @@ class Scope:
                     shown,
                     rule.text,
                     f"allowed by rule {rule.text}",
-                    tuple(warnings),
+                    (*warnings, *stale),
                 )
 
         return Verdict(
-            Status.OUT_OF_SCOPE, shown, None, "no allow rule matched", tuple(warnings)
+            Status.OUT_OF_SCOPE, shown, None, "no allow rule matched", (*warnings, *stale)
         )
 
 

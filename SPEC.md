@@ -158,3 +158,15 @@ Decisions made while building, so the reasoning survives between sessions.
 - The first matching rule in file order is the one named in the verdict. Deny rules are checked before any allow rule.
 - A verdict shows the target as typed, except that URL userinfo (`user:password@`) is replaced with `***@`, so a password never reaches output or logs.
 - `Scope.load(path)` and the stale-scope warning arrive in step 3; `Scope(allow=..., deny=..., wildcard_depth=...)` is the in-memory form.
+
+### Step 3: scope file loader and stale warning (2026-10-19)
+- `Scope.load(path)` (and `inbounds.load_scope`, `inbounds.parse_scope(text)`) read the TOML scope file. Every problem raises `ScopeFileError` with the file name and what to fix. The loader is strict because a quiet mistake in a scope file means testing something you were not allowed to test.
+- Unknown keys are errors at the top level and in `[program]`, `[options]` and `[rules]`, so a typo like `denies = [...]` cannot silently drop a deny list.
+- `program.captured` is required. It is the only way the tool can tell the scope is out of date. It must be a TOML date (`2026-10-18`) or the same text in quotes; a date with a time of day is rejected.
+- `rules.allow` must have at least one rule when loading a file (an empty allow list would make everything OUT_OF_SCOPE and is almost certainly a mistake). `rules.deny` may be empty or missing. An in-memory `Scope()` with no rules is still allowed.
+- Each rule is parsed with `parse_rule`; a bad one is reported as `rules.allow[2]` or `rules.deny[0]` with the rule text and the reason.
+- `options.wildcard_depth` must be `"any"` or `"one"`. `options.max_age_days` must be a whole number, 1 or more; default 90.
+- Files larger than 1 MiB and files that are not UTF-8 are rejected. A UTF-8 byte order mark (common from Windows editors) and CRLF line endings are accepted.
+- Stale scope: if `captured` is more than `max_age_days` days before today, every verdict (including UNCLEAR) carries a warning. It is one day over the limit, not at it: exactly `max_age_days` days old is fine. A `captured` date in the future also warns (likely a typo). The warning never changes a status. `Scope.check(target, today=...)` takes a date so tests are deterministic.
+- The warning is part of `Verdict.warnings`. The CLI (step 4) is responsible for printing it to stderr once per run, not once per line.
+- `examples/example-program.toml` is a fictional scope file. A test loads it and checks it behaves like the in-memory sample scope, so the example cannot drift out of date.
