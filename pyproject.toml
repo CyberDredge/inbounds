@@ -23,6 +23,9 @@ classifiers = [
 ]
 dependencies = []
 
+[project.scripts]
+inbounds = "inbounds.cli:run"
+
 [project.optional-dependencies]
 dev = ["pytest>=8"]
 

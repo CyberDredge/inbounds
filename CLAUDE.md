@@ -26,11 +26,13 @@ Requires Python 3.11 or newer.
 - `src/inbounds/rules.py` — rule parsing into typed rules (build step 2).
 - `src/inbounds/matcher.py` — `Scope`, `Verdict`, `Status`, matching (build step 2).
 - `src/inbounds/scopefile.py` — TOML scope file loader, strict validation (build step 3).
+- `src/inbounds/cli.py` — `inbounds init | check | filter` (build step 4); `__main__.py` makes `python -m inbounds` work.
 - `examples/example-program.toml` — fictional example scope file (a test loads it).
 - `tests/` — table-driven tests. `test_matcher_table.py` holds the SPEC.md table row for row.
 
 ## Build status (update at the end of each session)
 - Step 1 (normalize + tests): committed and pushed (a66801a).
 - Step 2 (rules + matcher + SPEC table as tests): committed and pushed (769488b).
-- Step 3 (scope file loader + stale warning): written, 345 tests passing on Python 3.11, 3.12 and 3.13 in the build workspace, awaiting the owner's review. Not committed.
-- Next: step 4 (CLI: init, check, filter).
+- Step 3 (scope file loader + stale warning): committed and pushed (a45fb9d).
+- Step 4 (CLI: init, check, filter): written, 397 tests passing on Python 3.11, 3.12 and 3.13 in the build workspace, awaiting the owner's review. Not committed. After pulling this step run `pip install -e ".[dev]"` again so the `inbounds` command is registered.
+- Next: step 5 (README with usage, design decisions, disclaimer and Alternatives; CI on 3.11/3.12/3.13), then step 6 (self-review pass).
