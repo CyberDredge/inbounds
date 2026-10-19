@@ -1,0 +1,148 @@
+# inbounds: spec (DRAFT v0.1, working name)
+
+Status: v0.1 spec, approved by the owner on 2026-10-18. Build in progress; see the build decisions log at the bottom.
+
+## One line
+A small, zero-dependency Python library and CLI that answers "am I allowed to test this target?" against a bug bounty program's scope, with an explainable verdict.
+
+## Positioning (prior art checked 2026-10-18)
+- Filters already exist: tomnomnom/inscope (regex .scope file), hacker-scoper (Go, mature: wildcards, regex, CIDR, nmap ranges, "unsure" bucket), scopeX.
+- Several Python projects embed their own private matcher: ReconForge (scopecheck), Kambo, h1-mcp, a bounty-platform MCP server.
+- Gap: a standalone, importable, rigorously tested matcher with explainable verdicts.
+- Differentiator is correctness and reusability, not feature count. Do not chase hacker-scoper on features.
+- README must have an honest "Alternatives" section linking the above.
+
+## Goals
+- Library first (`Scope.load(path).check(target)`), CLI second.
+- Verdict always names the rule that decided it.
+- Fail closed: no matching allow rule means OUT_OF_SCOPE. Input we cannot safely interpret means UNCLEAR.
+- Python 3.11+, standard library only at runtime (tomllib, ipaddress, urllib.parse).
+- Test suite is the credibility: table-driven, adversarial edge cases.
+
+## Non-goals (v1)
+- No network calls, no DNS resolution, no scanning, no scraping HackerOne/Bugcrowd/etc.
+- No importers (Burp, platform exports) in v1.
+- No real program scope files in the repo. Fictional example only (example.com, 203.0.113.0/24).
+- CIDR/range targets (e.g. checking `203.0.113.0/24` itself) return UNCLEAR in v1.
+- No Windows-only or GUI work.
+
+## Scope file (TOML)
+```toml
+[program]
+name = "example-program"                    # fictional
+captured = 2026-10-18                       # date you copied the scope; drives stale warning
+source = "https://example.com/security"     # where you copied it from (informational only, never fetched)
+
+[options]
+wildcard_depth = "any"                      # "any": *.example.com matches a.b.example.com; "one": only a.example.com
+max_age_days = 90
+
+[rules]
+allow = ["*.example.com", "app.example.org", "https://example.net/api/", "203.0.113.0/24"]
+deny  = ["admin.example.com", "*.staging.example.com", "203.0.113.7"]
+```
+
+## Rule types
+- Exact host: `app.example.org` (does not imply subdomains)
+- Wildcard host: `*.example.com` (subdomains only; does NOT match the apex `example.com`, list it separately)
+- URL prefix: `https://example.net/api/` (scheme + host + path, matched on a path-segment boundary)
+- IP: `203.0.113.5` (IPv4 or IPv6)
+- CIDR: `203.0.113.0/24` (IPv4 or IPv6)
+- Optional `:port` suffix on host rules (see open decisions)
+
+## Verdicts
+- Status: `IN_SCOPE`, `OUT_OF_SCOPE`, `UNCLEAR`
+- Precedence: deny beats allow. No allow match means OUT_OF_SCOPE ("no allow rule matched").
+- Fields: `status`, `rule` (rule text or None), `reason`, `warnings`
+- Exit codes (check): 0 IN_SCOPE, 1 OUT_OF_SCOPE, 2 UNCLEAR or error
+- Stale scope: if `captured` is older than `max_age_days`, warn on stderr and add a warning to the verdict. Never change the status because of staleness.
+
+## Normalization (before matching)
+Lowercase; strip one trailing dot; strip userinfo (host is what follows the last `@` in the authority); bracketed IPv6; IDN to punycode; only http/https URL schemes; anything with whitespace/control characters, an empty string, or an unsupported scheme is UNCLEAR. Numeric-looking hosts (decimal like `2130706433`, hex like `0x7f000001`, octal-ish) are UNCLEAR. Never guess.
+
+## CLI
+```
+inbounds init <file>                       # write a fictional template scope file
+inbounds check <file> <target> [--json]    # one verdict, exit code per above
+inbounds filter <file> [--invert]          # stdin -> stdout; prints IN_SCOPE only (--invert: OUT_OF_SCOPE only); UNCLEAR lines go to stderr
+```
+
+## Required test table (sample scope above, wildcard_depth = any)
+| Target | Expected | Why |
+|---|---|---|
+| api.example.com | IN_SCOPE | wildcard |
+| a.b.example.com | IN_SCOPE (OUT with depth = one) | depth option |
+| example.com | OUT_OF_SCOPE | wildcard does not cover apex |
+| notexample.com | OUT_OF_SCOPE | lookalike |
+| example.com.evil.net | OUT_OF_SCOPE | suffix trick |
+| API.EXAMPLE.COM. | IN_SCOPE | case and trailing dot |
+| admin.example.com | OUT_OF_SCOPE | deny beats allow |
+| x.staging.example.com | OUT_OF_SCOPE | deny wildcard |
+| https://api.example.com@evil.net/ | OUT_OF_SCOPE | userinfo trick, real host is evil.net |
+| https://example.net/api/v1 | IN_SCOPE | URL prefix |
+| https://example.net/apix | OUT_OF_SCOPE | segment boundary |
+| https://example.net/ | OUT_OF_SCOPE | host has path-restricted rule only |
+| 203.0.113.50 | IN_SCOPE | CIDR |
+| 203.0.113.7 | OUT_OF_SCOPE | deny IP beats CIDR |
+| 203.0.114.1 | OUT_OF_SCOPE | outside CIDR |
+| 2001:db8::1 | OUT_OF_SCOPE | no IPv6 rule |
+| bücher.example.com | IN_SCOPE | IDN normalized to punycode |
+| 2130706433 | UNCLEAR | obfuscated IP form |
+| 0x7f000001 | UNCLEAR | obfuscated IP form |
+| ftp://api.example.com | UNCLEAR | unsupported scheme |
+| `exa mple.com` / empty string | UNCLEAR | unparseable |
+| 203.0.113.0/24 | UNCLEAR | range targets unsupported in v1 |
+
+## Repo layout
+```
+inbounds/
+  CLAUDE.md  README.md  LICENSE (MIT)  SECURITY.md  CHANGELOG.md  pyproject.toml
+  src/inbounds/{__init__,normalize,rules,matcher,scopefile,cli}.py
+  tests/{test_normalize,test_matcher_table,test_scopefile,test_cli}.py
+  examples/example-program.toml          # fictional only
+  .github/workflows/ci.yml               # pytest on 3.11, 3.12, 3.13
+```
+
+## Build order
+1. normalize + tests
+2. rules + matcher + the table above as tests
+3. scope file loader + stale warning + tests
+4. CLI (init, check, filter) + tests
+5. README (usage, design decisions, disclaimer, Alternatives) and CI
+6. Self-review pass for gaps; then the owner decides on the first commit
+
+## README disclaimer (required, plain language)
+The program's published policy is the only authority on scope. This tool is a safety net for typos and recon noise. It can be wrong if the scope file is wrong or stale. Verify before you test.
+
+## CLAUDE.md rules for the repo
+- Review and flag only on git: no commit, push, PR, merge, reset, or rebase without the owner's explicit approval.
+- No network access in code or tests. No real program data. No secrets, tokens, or .env content anywhere.
+- Runtime dependencies stay at zero. Dev dependency: pytest only (ruff optional).
+- Every matching rule change needs a row in the test table.
+
+## Definition of done (v1)
+All table rows pass. 100% of rule types covered by tests. `pip install .` works clean on a fresh venv. README example copy-pastes and runs. No dependencies at runtime.
+
+## Decisions (resolved 2026-10-18)
+1. Name: `inbounds` (not registered on PyPI when checked).
+2. Port semantics: a rule without a port matches any port.
+3. Default `wildcard_depth`: `any`.
+4. `*.example.com` does not match the apex `example.com`.
+5. License and author line: MIT, handle only (`CyberDredge`), no email address.
+
+## Build decisions log
+Decisions made while building, so the reasoning survives between sessions.
+
+### Step 1: normalization (2026-10-18)
+- Outer whitespace (including CRLF from piped input) is stripped. Any whitespace, control, or invisible character inside the target (zero-width, bidi override, non-breaking space) is UNCLEAR.
+- A scheme is required for anything with a path. `example.com/path`, `//example.com`, and anything with `?`, `#`, or `@` but no scheme is UNCLEAR.
+- Backslashes are UNCLEAR (browsers read them as slashes, other tools do not).
+- Query strings and fragments are dropped. Dot-segments in URL paths are resolved before matching (`/api/../admin` becomes `/admin`). Percent-encoded dots, slashes, backslashes, and null bytes in a path are UNCLEAR.
+- Path case is preserved. Whether path rules match case-sensitively is a step 2 decision (proposed: case-sensitive).
+- Userinfo in a URL is ignored (the host is what follows the last `@`) and a warning is attached. The warning never repeats the userinfo, since it can hold a password.
+- Numeric last label (decimal, hex, octal-style, short forms like `127.1`) is UNCLEAR unless the whole thing is a strict dotted-quad IPv4. Leading zeros such as `203.0.113.050` are UNCLEAR.
+- IPv6 zone identifiers (`%eth0`) are UNCLEAR. IPv4-mapped IPv6 (`::ffff:203.0.113.7`) is converted to the IPv4 address with a warning, so a deny rule on the IPv4 address also catches it.
+- Ports must be plain ASCII digits, 1 to 65535. Empty or zero ports are UNCLEAR. Only an explicitly written port is recorded.
+- Host name labels allow letters, digits, hyphen, and underscore. Wildcards, empty labels, labels over 63 characters, and names over 253 characters are UNCLEAR.
+- Internationalized names are converted to punycode with Python's built-in IDNA codec (IDNA 2003 rules).
+- Target text longer than 2048 characters is UNCLEAR.

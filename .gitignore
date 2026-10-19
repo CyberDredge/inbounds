@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Secrets and environment
+.env
+.env.*
+*.pem
+*.key
+
+# Real program scope data must never be committed (this repo is public)
+/scopes/
+*.private.toml
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
