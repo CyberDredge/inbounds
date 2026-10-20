@@ -122,3 +122,18 @@ def test_rule_error_message_names_the_rule():
         parse_rule("*example.com")
     assert "*example.com" in str(info.value)
     assert "leading" in info.value.reason
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["faß.example.com", "*.faß.example.com", "https://faß.example.com/x", "faß.example.com:8443", "fa\u03c2.example.com"],
+    ids=lambda s: ascii(s)[:40],
+)
+def test_rules_with_idna_deviation_characters_are_rejected(text):
+    with pytest.raises(RuleError) as info:
+        parse_rule(text)
+    assert "xn--" in info.value.reason
+
+
+def test_the_explicit_xn_form_is_a_valid_rule():
+    assert parse_rule("xn--fa-hia.example.com").host == "xn--fa-hia.example.com"

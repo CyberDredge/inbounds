@@ -224,7 +224,7 @@ def _read_lines(stream: TextIO) -> Iterator[tuple[int, str, bool]]:
             return
         number += 1
         if number == 1:
-            chunk = chunk.removeprefix("﻿")  # a byte order mark from a Windows pipe
+            chunk = chunk.removeprefix("\ufeff")  # a byte order mark from a Windows pipe
         if len(chunk) > MAX_LINE_CHARS and not chunk.endswith("\n"):
             while True:  # discard the rest of the oversized line
                 rest = stream.readline(MAX_LINE_CHARS)

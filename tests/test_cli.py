@@ -130,8 +130,8 @@ def test_check_never_prints_raw_control_characters(scope_file):
     assert code == 2
     assert "\x1b" not in out
     assert "\\x1b" in out
-    code, out, _ = run(["check", scope_file, "exa‮mple.com"])
-    assert "‮" not in out and "\\u202e" in out
+    code, out, _ = run(["check", scope_file, "exa\u202emple.com"])
+    assert "\u202e" not in out and "\\u202e" in out
 
 
 def test_check_hides_userinfo_passwords(scope_file):
@@ -213,7 +213,7 @@ def test_filter_skips_blank_lines_and_keeps_going(scope_file):
 
 
 def test_filter_handles_crlf_bom_and_a_missing_final_newline(scope_file):
-    code, out, _ = run(["filter", scope_file], "﻿api.example.com\r\nevil.net\r\napp.example.org")
+    code, out, _ = run(["filter", scope_file], "\ufeffapi.example.com\r\nevil.net\r\napp.example.org")
     assert out == "api.example.com\napp.example.org\n"
 
 
@@ -430,3 +430,10 @@ def test_process_closing_the_output_pipe_early_is_not_an_error():
         if proc.poll() is None:
             proc.kill()
         feeder.join(timeout=10)
+
+
+def test_check_refuses_an_idna_deviation_character(scope_file):
+    code, out, _ = run(["check", scope_file, "faß.example.com"])
+    assert code == 2
+    assert out.startswith("UNCLEAR")
+    assert "xn--" in out

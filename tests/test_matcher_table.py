@@ -496,3 +496,20 @@ def test_check_does_not_mutate_the_scope(scope):
     for target in ["api.example.com", "admin.example.com", "", "2130706433"]:
         scope.check(target)
     assert (scope.allow, scope.deny, scope.wildcard_depth) == before
+
+
+# ---- step 6 ---------------------------------------------------------------------------------
+
+
+def test_sharp_s_is_unclear_not_silently_ss():
+    scope = Scope(allow=["fass.example.com", "xn--fa-hia.example.com"])
+    assert scope.check("faß.example.com").status is UNCLEAR
+    assert scope.check("fass.example.com").status is IN
+    assert scope.check("xn--fa-hia.example.com").status is IN
+
+
+@pytest.mark.parametrize("kwargs", [{"allow": "*.example.com"}, {"allow": ["a.example.com"], "deny": "admin.example.com"}, {"allow": b"a.example.com"}])
+def test_a_bare_string_for_allow_or_deny_is_a_clear_type_error(kwargs):
+    with pytest.raises(TypeError) as info:
+        Scope(**kwargs)
+    assert "list" in str(info.value)

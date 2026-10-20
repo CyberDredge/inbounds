@@ -29,6 +29,12 @@ _LABEL_RE = re.compile(r"[a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?")
 _NUMERIC_LABEL_RE = re.compile(r"0x[0-9a-f]*|[0-9]+")
 _RISKY_PATH_ENCODING_RE = re.compile(r"%(2e|2f|5c|00)", re.IGNORECASE)
 
+# The four IDNA "deviation" characters (UTS #46): sharp s, final sigma, and the two
+# joiners. Python's codec follows IDNA 2003, which turns "ß" into "ss" and "ς" into
+# "σ" and drops the joiners. Current browsers keep them, so the two read the same
+# text as different hosts. That is the kind of parser difference this tool refuses.
+_IDNA_DEVIATION_CHARS = frozenset("\u00df\u03c2\u200c\u200d")
+
 
 class UnclearTarget(ValueError):
     """The input cannot be interpreted safely. ``reason`` says why."""
@@ -70,6 +76,12 @@ def normalize_hostname(host: str) -> str:
     Raises ``UnclearTarget`` for anything that is not a plain, valid host name,
     including numeric hosts that look like obfuscated IP addresses.
     """
+    for ch in host:  # the raw text: lower() can turn a capital sigma into a final sigma
+        if ch in _IDNA_DEVIATION_CHARS:
+            raise UnclearTarget(
+                f"host name contains U+{ord(ch):04X}, which older and current standards "
+                "turn into different hosts (write the xn-- form if you mean it)"
+            )
     name = host.lower()
     if name.endswith("."):
         name = name[:-1]

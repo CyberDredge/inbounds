@@ -84,6 +84,10 @@ class Scope:
         source: str | None = None,
         max_age_days: int = DEFAULT_MAX_AGE_DAYS,
     ) -> None:
+        for label, rules in (("allow", allow), ("deny", deny)):
+            if isinstance(rules, (str, bytes)):
+                # A bare string would be read one character at a time.
+                raise TypeError(f'{label} must be a list of rule strings, for example {label}=["*.example.com"]')
         if wildcard_depth not in WILDCARD_DEPTHS:
             raise ValueError(f"wildcard_depth must be one of {WILDCARD_DEPTHS}, got {wildcard_depth!r}")
         if isinstance(max_age_days, bool) or not isinstance(max_age_days, int) or max_age_days < 1:

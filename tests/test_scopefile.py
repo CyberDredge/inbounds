@@ -319,3 +319,9 @@ def test_scope_rejects_bad_max_age_days(bad_value):
 def test_scope_rejects_non_date_captured(bad_value):
     with pytest.raises(ValueError):
         Scope(allow=ALLOW, captured=bad_value)  # type: ignore[arg-type]
+
+
+def test_rule_with_an_idna_deviation_character_is_a_file_error():
+    err = bad(MINIMAL.replace('["*.example.com"]', '["faß.example.com"]'))
+    assert "rules.allow[0]" in err.problem
+    assert "xn--" in err.problem

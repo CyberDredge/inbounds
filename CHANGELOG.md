@@ -13,3 +13,9 @@ First pre-release (0.1.0.dev0). Not yet published to PyPI.
 - Strict TOML scope file loader and a stale-scope warning.
 - `inbounds init`, `inbounds check` and `inbounds filter`.
 - Test suite built around the required test table in `SPEC.md`, and CI on Python 3.11, 3.12 and 3.13.
+
+### Changed
+- Host names containing `ß`, `ς` or a zero-width joiner are now `UNCLEAR` (and invalid as rules). Python's IDNA 2003 codec and current browsers turn them into different hosts, so the tool no longer picks one. Write the `xn--` form instead.
+- `Scope(allow="...")` with a bare string now raises a `TypeError` that asks for a list.
+- README documents how full-width letters and dot-like characters are mapped.
+- `pyproject.toml` gains `[project.urls]`; a Dependabot config keeps the pinned GitHub Actions current.

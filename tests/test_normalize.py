@@ -85,11 +85,11 @@ UNCLEAR = [
     "exa mple.com",
     "exa\tmple.com",
     "example.com\x00",
-    "ex ample.com",
+    "ex\u00a0ample.com",
     "x" * 3000,
     # Invisible and bidirectional characters
-    "exa​mple.com",
-    "example‮.com",
+    "exa\u200bmple.com",
+    "example\u202e.com",
     # Obfuscated or non-canonical IP forms
     "2130706433",
     "0x7f000001",
@@ -239,3 +239,66 @@ def test_normalize_hostname_rejects_bad_input(raw):
 
 def test_returns_target_instances():
     assert isinstance(normalize("example.com"), Target)
+
+
+# ---- IDNA deviation characters (step 6) ---------------------------------------------------
+# Python's codec follows IDNA 2003, which turns "ß" into "ss" and a final sigma into "σ" and drops the
+# joiners. Browsers keep them. The two would read the same text as different hosts, so the
+# tool refuses to pick one.
+
+IDNA_DEVIATIONS = [
+    "faß.example.com",
+    "ß.example.com",
+    "fa\u03c2.example.com",
+    "https://faß.example.com/x",
+    "faß.example.com:8443",
+]
+
+
+@pytest.mark.parametrize("raw", IDNA_DEVIATIONS, ids=lambda s: ascii(s)[:40])
+def test_idna_deviation_characters_are_unclear(raw):
+    with pytest.raises(UnclearTarget) as info:
+        normalize(raw)
+    assert "xn--" in info.value.reason
+
+
+@pytest.mark.parametrize("raw", ["a\u200cb.example.com", "a\u200db.example.com", "[faß.example.com]"])
+def test_other_forms_of_the_same_trick_are_unclear_for_their_own_reasons(raw):
+    # The joiners are caught earlier as invisible characters; a bracketed name is malformed.
+    with pytest.raises(UnclearTarget):
+        normalize(raw)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ["faß.example.com", "fa\u03c2.example", "a\u200cb.example", "a\u200db.example", "Faß.EXAMPLE."],
+)
+def test_idna_deviation_characters_are_refused_by_normalize_hostname_too(raw):
+    with pytest.raises(UnclearTarget):
+        normalize_hostname(raw)
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("fass.example.com", "fass.example.com"),
+        ("xn--fa-hia.example.com", "xn--fa-hia.example.com"),  # the explicit form is fine
+        ("FAẞ.example.com", "fass.example.com"),  # capital sharp s: both standards give "ss"
+        ("ΣΑΣ.example.net", "xn--mxa9ab.example.net"),  # capital sigma is not a final sigma
+        ("ΣΑΣ", "xn--mxa9ab"),  # even at the very end, where lower() would produce one
+    ],
+)
+def test_neighbours_of_the_deviation_characters_still_work(raw, expected):
+    assert normalize_hostname(raw) == expected
+
+
+# ---- documented Unicode mapping (README, "What it refuses to guess") -----------------------
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ["\uff41.example.com", "a\u3002example.com", "a\uff0eexample.com", "a\uff61example.com"],
+    ids=lambda s: ascii(s)[:30],
+)
+def test_fullwidth_and_dot_like_characters_map_like_a_browser(raw):
+    assert normalize(raw).host == "a.example.com"

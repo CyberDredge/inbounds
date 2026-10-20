@@ -23,6 +23,12 @@ classifiers = [
 ]
 dependencies = []
 
+[project.urls]
+Homepage = "https://github.com/CyberDredge/inbounds"
+Source = "https://github.com/CyberDredge/inbounds"
+Issues = "https://github.com/CyberDredge/inbounds/issues"
+Changelog = "https://github.com/CyberDredge/inbounds/blob/main/CHANGELOG.md"
+
 [project.scripts]
 inbounds = "inbounds.cli:run"
 

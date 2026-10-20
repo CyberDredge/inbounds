@@ -1,0 +1,11 @@
+# Keeps the GitHub Actions pins in .github/workflows/ current.
+#
+# The actions are pinned to full commit SHAs on purpose (see SPEC.md, Step 5).
+# Dependabot updates the SHA and the version comment next to it, and opens a pull
+# request for a person to review. Nothing is merged automatically.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

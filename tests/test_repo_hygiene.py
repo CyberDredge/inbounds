@@ -8,6 +8,7 @@ import re
 import shlex
 import sys
 import tomllib
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -233,3 +234,41 @@ def test_example_scope_file_uses_only_reserved_names():
     hosts = re.findall(r"[\w*-]+(?:\.[\w-]+)+", text.split("[rules]", 1)[1])
     for host in hosts:
         assert re.search(r"example\.(?:com|net|org)$|^203\.0\.113\.", host), host
+
+
+# ---- step 6 guards ---------------------------------------------------------------------------------
+
+
+def test_dependabot_keeps_the_pinned_actions_current():
+    text = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
+    assert re.search(r"^version:\s*2\s*$", text, re.MULTILINE)
+    assert 'package-ecosystem: "github-actions"' in text
+    assert 'directory: "/"' in text
+    assert "interval:" in text
+    assert "auto-merge" not in text and "automerge" not in text  # a person reviews every update
+
+
+def test_pyproject_has_project_links():
+    urls = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["urls"]
+    assert {"Homepage", "Source", "Issues", "Changelog"} <= set(urls)
+    for link in urls.values():
+        assert link.startswith("https://github.com/CyberDredge/inbounds")
+
+
+def test_source_files_hold_no_invisible_or_control_characters():
+    """Hostile test inputs are written as escapes (\\u200b), never as raw characters nobody can see."""
+    offenders = []
+    for folder in ("src", "tests", "examples"):
+        for path in (ROOT / folder).rglob("*"):
+            if not path.is_file() or path.suffix not in {".py", ".toml", ".md"}:
+                continue
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                for ch in line:
+                    if ord(ch) > 127 and unicodedata.category(ch)[0] in ("C", "Z"):
+                        offenders.append(f"{path.relative_to(ROOT)}:{number} U+{ord(ch):04X}")
+    assert not offenders, offenders
+
+
+def test_readme_documents_the_unicode_rules():
+    assert "`ß` or `ς`" in README and "`xn--` form" in README
+    assert "full-width letters" in README and "dot-like characters" in README

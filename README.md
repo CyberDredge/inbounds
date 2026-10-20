@@ -149,8 +149,11 @@ Scope mistakes hide in the gaps between how different tools read the same text, 
 - Backslashes (browsers read them as slashes), and percent-encoded dots, slashes or null bytes in a URL path.
 - Any scheme other than `http` and `https`; a path with no scheme; IPv6 zone identifiers; address ranges as targets.
 - Wildcards, empty labels and over-long names in a target.
+- Internationalized names containing `ß` or `ς`. Older and current standards turn them into different hosts, so the tool will not pick one. Write the `xn--` form if you mean that host. This applies to scope-file rules as well as targets.
 
 It does normalize the things that are safe to normalize: case, one trailing dot, internationalized names (converted to punycode), IPv6 spelling, `..` and `.` path segments, and the userinfo trick. In `https://api.example.com@evil.net/` the real host is `evil.net`, and the tool says so.
+
+Unicode look-alikes are mapped the way browsers map them, without a warning: full-width letters (`ａ` becomes `a`) and the dot-like characters `。`, `．` and `｡` become a plain `.`. The verdict is for the host that results. If you would rather refuse these, filter non-ASCII input out before it reaches `inbounds`.
 
 ## Design decisions
 
@@ -169,7 +172,7 @@ The full reasoning is in [SPEC.md](SPEC.md), including a log of each build decis
 - It checks text, not reality. A host that is in scope on paper can resolve to a third party's server, redirect elsewhere, or sit behind a CDN. With no DNS, the tool cannot see that.
 - It only knows the scope you give it. If the scope file is wrong, old, or missing a rule, the verdicts are wrong.
 - Scope is only part of a program's rules. Rate limits, forbidden test types, and safe-harbor terms are not modelled.
-- Internationalized names use Python's built-in IDNA 2003 codec.
+- Internationalized names use Python's built-in IDNA 2003 codec. The four characters where it differs from browsers (`ß`, `ς` and the two joiners) are refused rather than guessed.
 - Range targets (checking `203.0.113.0/24` itself) are `UNCLEAR` in v1.
 
 ## Alternatives
